@@ -1,8 +1,8 @@
 const express = require('express')
 const app = express()
 
-app.listen(3000, function () {
-    console.log('app listening on port 3000')
+app.listen(3001, function () {
+    console.log('app listening on port 3001')
 })
 
 //引入路由器模块
