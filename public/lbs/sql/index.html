@@ -1,0 +1,465 @@
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>导出脚本生成</title>
+</head>
+<script src="./vue.js"></script>
+<link rel="stylesheet" href="./element.css">
+<script src="./element.js"></script>
+<script src="./vue-clipboard.js"></script>
+<body>
+<div id="app">
+  <el-card>
+    <el-button
+      type="primary"
+      round
+      @click="getData"
+    >点击生成</el-button>
+    <el-radio-group
+      v-model="dateType"
+      style="margin-left: 30px;"
+    >
+      <el-radio label="today">今天</el-radio>
+      <el-radio label="custom1">自定义</el-radio>
+      <el-radio label="custom2">日期区间</el-radio>
+    </el-radio-group>
+    <el-date-picker
+      v-if="dateType==='custom1'"
+      style="margin-left: 30px;"
+      v-model="day"
+      type="date"
+      value-format="yyyy-MM-dd"
+      placeholder="选择导出日期">
+    </el-date-picker>
+    <el-date-picker
+      v-if="dateType==='custom2'"
+      style="margin-left: 30px;"
+      v-model="dateRange"
+      type="daterange"
+      value-format="yyyy-MM-dd"
+      range-separator="至"
+      start-placeholder="开始日期"
+      end-placeholder="结束日期">
+    </el-date-picker>
+  </el-card>
+  <el-card
+    style="margin-top: 8px;height: calc(100% - 90px)"
+    :body-style="{'padding': '0'}"
+  >
+    <div
+      class="scrollbarY"
+      style="height: 100%;overflow-y: scroll;padding: 20px;line-height: 28px;"
+    >{{ str }}</div>
+  </el-card>
+</div>
+</body>
+<script type="text/javascript">
+  let app = new Vue({
+    el: '#app',
+    data: {
+      dateType: 'today',
+      day: null,
+      dateRange: null,
+      str: ''
+    },
+    mounted() {
+
+    },
+    methods: {
+      getData(){
+        switch (this.dateType){
+          case 'today':
+            let time = new Date();
+            let year = time.getFullYear();
+            let month = time.getMonth() + 1;
+            month = month > 9 ? month : '0'+month;
+            let day = time.getDate();
+            day = day > 9 ? day : '0'+day;
+            this.replaceDate(year + '-' + month + '-' + day);
+            break;
+          case 'custom1':
+            if(this.day){
+              this.replaceDate(this.day);
+            }else{
+              this.$notify({
+                title: '请选择日期',
+                type: 'warning'
+              });
+            }
+            break;
+          case 'custom2':
+            if(this.dateRange && this.dateRange.length && this.dateRange.length === 2){
+              this.replaceDate2(this.dateRange[0], this.dateRange[1]);
+            }else{
+              this.$notify({
+                title: '请选择日期区间',
+                type: 'warning'
+              });
+            }
+            break;
+        }
+      },
+      replaceDate(date){
+        this.str = '';
+        let text = "select tg.group_name as 群组名\n" +
+                "\t,tg.id\n" +
+                "\t,coalesce(t_group_area.group_area, '无') as 群所属区域\n" +
+                "\t,COALESCE(t_people.user_num,0) as 用户数\n" +
+                "\t,COALESCE(staff_question.s_ques,0) as 座席登记问题数\n" +
+                "\t,COALESCE(user_mark_question.u_ques,0) as 用户标记问题数\n" +
+                "\t,COALESCE(private_chat_question.private_chat_num,0) as 群私聊问题数 \n" +
+                "\t,COALESCE(t_group_case.case_num,0) as 创建工单数\n" +
+                "\t,COALESCE(t_msg_num.msg_num,0) as 总消息数\n" +
+                "\t,COALESCE(t_staff_msg_num.staff_msg_num, 0) as 坐席消息数\n" +
+                "\t,COALESCE(t_org_people_msg_num.org_people_msg_num, 0) as 用户消息数\n" +
+                "\t,COALESCE(t_people_speak_num.people_speak_num,0) as 总发言人数\n" +
+                "\t,COALESCE(t_staff_people_speak_num.staff_people_speak_num, 0) as 坐席发言人数\n" +
+                "\t,COALESCE(t_org_people_speak_num.org_people_speak_num, 0) as 用户发言人数\n" +
+                "\t,COALESCE(t_org_people_speak_num2.org_people_speak_num, 0) as 发言过的用户数2022年1月1日至今\n" +
+                "\t,COALESCE(t_people_speak_org_num2.people_speak_org_num, 0) as 发言过的单位数2022年1月1日至今\n" +
+                "\tfrom iuser.t_group tg \n" +
+                "\t-- 群单位用户\n" +
+                "\tleft join \n" +
+                "\t(select tg.group_name\n" +
+                "\t\t,count(tgp.user_id) as user_num\n" +
+                "\t\t, tg.id as group_id\n" +
+                "\tfrom iuser.t_group_people tgp, iuser.t_group tg\n" +
+                "\twhere tg.id = tgp.group_id\n" +
+                "\t\tand not exists(select 1 from iuser.t_user tu where tu.id = tgp.user_id and tu.user_type = 'STAFF')\n" +
+                "\t\tand tgp.del_flag = 0 \n" +
+                "\tgroup by tg.group_name, tg.id\n" +
+                "\t)t_people  on tg.id = t_people.group_id\n" +
+                "\t--群区域\n" +
+                "\tleft join (\n" +
+                "\t\tselect t2.id as group_id, \n" +
+                "\t\t(select string_agg(uu.region_name, '/') from iuser.t_group_area_rel tgar, tmg.uum_region uu where tgar.group_id = t2.id and tgar.region = uu.region_code) as group_area\n" +
+                "\t\tfrom iuser.t_group t2\n" +
+                "\t\tgroup by t2.id\n" +
+                "\t) t_group_area on tg.id = t_group_area.group_id\n" +
+                "\t--群坐席登记问题数\n" +
+                "\tleft join \n" +
+                "\t(select tg.group_name,tg.id as group_id,count(tcq.id) as s_ques from iuser.t_group tg \n" +
+                "\t\tleft join csm.te_call_qus tcq on tcq.groupid = tg.id \n" +
+                "\t\twhere to_char(tcq.createtime, 'yyyy-MM-dd') ='2022-10-09'\n" +
+                "\t\tand tcq.groupid is not null\n" +
+                "\t\tgroup by tg.group_name, tg.id\n" +
+                "\t) staff_question on tg.id = staff_question.group_id\n" +
+                "\t--群用户标记问题\n" +
+                "\tleft join \n" +
+                "\t(select tg.group_name,tg.id as group_id, count(tc.id) as u_ques FROM iuser.t_group tg,\n" +
+                "\t csm.te_chat_qus tc\n" +
+                "\t where tc.source_id = tg.id\n" +
+                "\t and tc.source_id = tg.id\n" +
+                "\t and to_char(tc.create_time, 'yyyy-MM-dd') ='2022-10-09'\n" +
+                "\t and tc.is_merge = 0 \n" +
+                "\t and tc.del_flag = 0\n" +
+                "\t group by tg.group_name, tg.id\n" +
+                "\t ) user_mark_question on tg.id = user_mark_question.group_id\n" +
+                "\t--群私聊问题数\n" +
+                "\tleft join \n" +
+                "\t(select tg.group_name,tg.id as group_id, count(tcq.id) as private_chat_num FROM iuser.t_group tg,\n" +
+                "\t transfer.t_private_chat_info tpci,\n" +
+                "\t csm.te_call_qus tcq\n" +
+                "\t where tg.id = tpci.group_id \n" +
+                "\t and tcq.privatechatinfoid = tpci.id\n" +
+                "\t and to_char(tcq.createtime, 'yyyy-MM-dd') ='2022-10-09'\n" +
+                "\t group by tg.group_name, tg.id\n" +
+                "\t ) private_chat_question on tg.id = private_chat_question.group_id\n" +
+                "\t --群工单\n" +
+                "\t left join \n" +
+                "\t (select count(id) as case_num, model_source_id as group_id from (\n" +
+                "\t \tselect tor.id, tor.model_source_id from iorder.t_order tor \n" +
+                "\t \twhere tor.model_source = 'GROUP'\n" +
+                "\t \tand to_char(tor.create_time, 'yyyy-MM-dd') = '2022-10-09'\n" +
+                "\t ) tor \n" +
+                "\t GROUP BY tor.model_source_id \n" +
+                "\t )  t_group_case on tg.id = t_group_case.group_id\n" +
+                "\t--群总消息数\n" +
+                "\tleft join \n" +
+                "\t(select count(twg.id) msg_num, twg .group_id from transfer.t_ws_group twg \n" +
+                "\t\twhere twg.sender is not null \n" +
+                "\t\tand ws_type = 'CHAT'\n" +
+                "\t\tand to_char(send_time, 'yyyy-MM-dd') = '2022-10-09' \n" +
+                "\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\tGROUP BY twg.group_id\n" +
+                "\t) t_msg_num on tg.id = t_msg_num.group_id\n" +
+                "\t--群坐席消息数\n" +
+                "\tleft join (\n" +
+                "\tselect count((select twg.sender from iuser.t_user tu where tu.user_type = 'STAFF' and tu.id = twg.sender)) staff_msg_num, twg.group_id from transfer.t_ws_group twg\n" +
+                "\t\t\twhere twg.sender is not null \n" +
+                "\t\t\tand ws_type = 'CHAT'\n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') = '2022-10-09' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_staff_msg_num on tg.id = t_staff_msg_num.group_id\t\n" +
+                "\t--群用户消息数\n" +
+                "\tleft join (\n" +
+                "\tselect count((select twg.sender from iuser.t_user tu where tu.user_type = 'NORMAL' and tu.id = twg.sender)) org_people_msg_num, twg.group_id from transfer.t_ws_group twg\n" +
+                "\t\t\twhere twg.sender is not null\n" +
+                "\t\t\tand ws_type = 'CHAT' \n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') = '2022-10-09' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_org_people_msg_num on tg.id = t_org_people_msg_num.group_id\t\n" +
+                "\t--群发言总人数\n" +
+                "\tleft join (\n" +
+                "\tselect count(distinct twg.sender) people_speak_num, twg.group_id from transfer.t_ws_group twg\n" +
+                "\t\t\twhere twg.sender is not null \n" +
+                "\t\t\tand ws_type = 'CHAT'\n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') = '2022-10-09' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_people_speak_num on tg.id = t_people_speak_num.group_id\t\n" +
+                "\t--群发言坐席数\n" +
+                "\tleft join (\n" +
+                "\tselect count(distinct (select tu.id from iuser.t_user tu where tu.user_type = 'STAFF' and tu.id = twg.sender)) staff_people_speak_num, twg.group_id from transfer.t_ws_group twg\n" +
+                "\t\t\twhere twg.sender is not null \n" +
+                "\t\t\tand ws_type = 'CHAT'\n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') = '2022-10-09' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_staff_people_speak_num on tg.id = t_staff_people_speak_num.group_id\t\n" +
+                "\t--群发言用户数\n" +
+                "\tleft join (\n" +
+                "\tselect count(distinct (select tu.id from iuser.t_user tu where tu.user_type = 'NORMAL' and tu.id = twg.sender)) org_people_speak_num, twg.group_id from transfer.t_ws_group twg\n" +
+                "\t\t\twhere twg.sender is not null \n" +
+                "\t\t\tand ws_type = 'CHAT'\n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') = '2022-10-09' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_org_people_speak_num on tg.id = t_org_people_speak_num.group_id\t\t\n" +
+                "\t--群发言过的单位用户数(2022年1月1日至今)\n" +
+                "\tleft join (\n" +
+                "\tselect count(distinct (select tu.id from iuser.t_user tu where tu.user_type = 'NORMAL' and tu.id = twg.sender)) org_people_speak_num, twg.group_id from transfer.t_ws_group twg\n" +
+                "\t\t\twhere twg.sender is not null \n" +
+                "\t\t\tand ws_type = 'CHAT'\n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') >= '2022-01-01' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_org_people_speak_num2 on tg.id = t_org_people_speak_num2.group_id\n" +
+                "\t--群发言过的单位数(2022年1月1日至今)\n" +
+                "\tleft join (\n" +
+                "\tselect count(distinct (select tuom.org_id from iuser.t_user_org_membership tuom, iuser.t_user tu where tuom.user_id = tu.id \n" +
+                "\t\tand tuom.tenant_id = tu.tenant_id\n" +
+                "\t\tand tu.user_type = 'NORMAL'\n" +
+                "\t\tand tu.tenant_id = '00000000-0000-0000-0000-000000000000'\n" +
+                "\t\tand twg.sender = tuom.user_id  order by tuom.create_time desc limit 1)) people_speak_org_num\n" +
+                "\t, twg.group_id from transfer.t_ws_group twg \n" +
+                "\t\t\twhere twg.sender is not null \n" +
+                "\t\t\tand ws_type = 'CHAT'\n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') >= '2022-01-01' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_people_speak_org_num2 on tg.id = t_people_speak_org_num2.group_id\n" +
+                "\n" +
+                "\twhere  tg.del_flag = 0 and tg.enabled = 1\t\n" +
+                "\torder by t_group_area.group_area,t_group_area.group_id\n";
+        this.str = text.replace(/2022-10-09/g, date);
+        this.$copyText( this.str ).then(() => {
+          this.$notify({
+            title: '复制成功',
+            type: 'success'
+          });
+        });
+      },
+      replaceDate2(beginDate, endDate){
+        this.str = '';
+        let text = "select tg.group_name as 群组名\n" +
+                "\t,tg.id\n" +
+                "\t,coalesce(t_group_area.group_area, '无') as 群所属区域\n" +
+                "\t,COALESCE(t_people.user_num,0) as 用户数\n" +
+                "\t,COALESCE(staff_question.s_ques,0) as 座席登记问题数\n" +
+                "\t,COALESCE(user_mark_question.u_ques,0) as 用户标记问题数\n" +
+                "\t,COALESCE(private_chat_question.private_chat_num,0) as 群私聊问题数 \n" +
+                "\t,COALESCE(t_group_case.case_num,0) as 创建工单数\n" +
+                "\t,COALESCE(t_msg_num.msg_num,0) as 总消息数\n" +
+                "\t,COALESCE(t_staff_msg_num.staff_msg_num, 0) as 坐席消息数\n" +
+                "\t,COALESCE(t_org_people_msg_num.org_people_msg_num, 0) as 用户消息数\n" +
+                "\t,COALESCE(t_people_speak_num.people_speak_num,0) as 总发言人数\n" +
+                "\t,COALESCE(t_staff_people_speak_num.staff_people_speak_num, 0) as 坐席发言人数\n" +
+                "\t,COALESCE(t_org_people_speak_num.org_people_speak_num, 0) as 用户发言人数\n" +
+                "\t,COALESCE(t_org_people_speak_num2.org_people_speak_num, 0) as 发言过的用户数2022年1月1日至今\n" +
+                "\t,COALESCE(t_people_speak_org_num2.people_speak_org_num, 0) as 发言过的单位数2022年1月1日至今\n" +
+                "\tfrom iuser.t_group tg \n" +
+                "\t-- 群单位用户\n" +
+                "\tleft join \n" +
+                "\t(select tg.group_name\n" +
+                "\t\t,count(tgp.user_id) as user_num\n" +
+                "\t\t, tg.id as group_id\n" +
+                "\tfrom iuser.t_group_people tgp, iuser.t_group tg\n" +
+                "\twhere tg.id = tgp.group_id\n" +
+                "\t\tand not exists(select 1 from iuser.t_user tu where tu.id = tgp.user_id and tu.user_type = 'STAFF')\n" +
+                "\t\tand tgp.del_flag = 0 \n" +
+                "\tgroup by tg.group_name, tg.id\n" +
+                "\t)t_people  on tg.id = t_people.group_id\n" +
+                "\t--群区域\n" +
+                "\tleft join (\n" +
+                "\t\tselect t2.id as group_id, \n" +
+                "\t\t(select string_agg(uu.region_name, '/') from iuser.t_group_area_rel tgar, tmg.uum_region uu where tgar.group_id = t2.id and tgar.region = uu.region_code) as group_area\n" +
+                "\t\tfrom iuser.t_group t2\n" +
+                "\t\tgroup by t2.id\n" +
+                "\t) t_group_area on tg.id = t_group_area.group_id\n" +
+                "\t--群坐席登记问题数\n" +
+                "\tleft join \n" +
+                "\t(select tg.group_name,tg.id as group_id,count(tcq.id) as s_ques from iuser.t_group tg \n" +
+                "\t\tleft join csm.te_call_qus tcq on tcq.groupid = tg.id \n" +
+                "\t\twhere to_char(tcq.createtime, 'yyyy-MM-dd') >='2022-12-05'\n" +
+                "\t\tand to_char(tcq.createtime, 'yyyy-MM-dd') <='2022-12-11'\n" +
+                "\t\tand tcq.groupid is not null\n" +
+                "\t\tgroup by tg.group_name, tg.id\n" +
+                "\t) staff_question on tg.id = staff_question.group_id\n" +
+                "\t--群用户标记问题\n" +
+                "\tleft join \n" +
+                "\t(select tg.group_name,tg.id as group_id, count(tc.id) as u_ques FROM iuser.t_group tg,\n" +
+                "\t csm.te_chat_qus tc\n" +
+                "\t where tc.source_id = tg.id\n" +
+                "\t and tc.source_id = tg.id\n" +
+                "\t and to_char(tc.create_time, 'yyyy-MM-dd') >='2022-12-05'\n" +
+                "\t and to_char(tc.create_time, 'yyyy-MM-dd') <='2022-12-11'\n" +
+                "\t and tc.is_merge = 0 \n" +
+                "\t and tc.del_flag = 0\n" +
+                "\t group by tg.group_name, tg.id\n" +
+                "\t ) user_mark_question on tg.id = user_mark_question.group_id\n" +
+                "\t--群私聊问题数\n" +
+                "\tleft join \n" +
+                "\t(select tg.group_name,tg.id as group_id, count(tcq.id) as private_chat_num FROM iuser.t_group tg,\n" +
+                "\t transfer.t_private_chat_info tpci,\n" +
+                "\t csm.te_call_qus tcq\n" +
+                "\t where tg.id = tpci.group_id \n" +
+                "\t and tcq.privatechatinfoid = tpci.id\n" +
+                "\t and to_char(tcq.createtime, 'yyyy-MM-dd') >='2022-12-05'\n" +
+                "\t and to_char(tcq.createtime, 'yyyy-MM-dd') <='2022-12-11'\n" +
+                "\t group by tg.group_name, tg.id\n" +
+                "\t ) private_chat_question on tg.id = private_chat_question.group_id\n" +
+                "\t --群工单\n" +
+                "\t left join \n" +
+                "\t (select count(id) as case_num, model_source_id as group_id from (\n" +
+                "\t \tselect tor.id, tor.model_source_id from iorder.t_order tor \n" +
+                "\t \twhere tor.model_source = 'GROUP'\n" +
+                "\t \tand to_char(tor.create_time, 'yyyy-MM-dd') >= '2022-12-05'\n" +
+                "\t \tand to_char(tor.create_time, 'yyyy-MM-dd') <= '2022-12-11'\n" +
+                "\t ) tor \n" +
+                "\t GROUP BY tor.model_source_id \n" +
+                "\t )  t_group_case on tg.id = t_group_case.group_id\n" +
+                "\t--群总消息数\n" +
+                "\tleft join \n" +
+                "\t(select count(twg.id) msg_num, twg .group_id from transfer.t_ws_group twg \n" +
+                "\t\twhere twg.sender is not null \n" +
+                "\t\tand ws_type = 'CHAT'\n" +
+                "\t\tand to_char(send_time, 'yyyy-MM-dd') >= '2022-12-05' \n" +
+                "\t\tand to_char(send_time, 'yyyy-MM-dd') <= '2022-12-11' \n" +
+                "\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\tGROUP BY twg.group_id\n" +
+                "\t) t_msg_num on tg.id = t_msg_num.group_id\n" +
+                "\t--群坐席消息数\n" +
+                "\tleft join (\n" +
+                "\tselect count((select twg.sender from iuser.t_user tu where tu.user_type = 'STAFF' and tu.id = twg.sender)) staff_msg_num, twg.group_id from transfer.t_ws_group twg\n" +
+                "\t\t\twhere twg.sender is not null \n" +
+                "\t\t\tand ws_type = 'CHAT'\n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') >= '2022-12-05' \n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') <= '2022-12-11' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_staff_msg_num on tg.id = t_staff_msg_num.group_id\t\n" +
+                "\t--群用户消息数\n" +
+                "\tleft join (\n" +
+                "\tselect count((select twg.sender from iuser.t_user tu where tu.user_type = 'NORMAL' and tu.id = twg.sender)) org_people_msg_num, twg.group_id from transfer.t_ws_group twg\n" +
+                "\t\t\twhere twg.sender is not null\n" +
+                "\t\t\tand ws_type = 'CHAT' \n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') >= '2022-12-05' \n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') <= '2022-12-11' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_org_people_msg_num on tg.id = t_org_people_msg_num.group_id\t\n" +
+                "\t--群发言总人数\n" +
+                "\tleft join (\n" +
+                "\tselect count(distinct twg.sender) people_speak_num, twg.group_id from transfer.t_ws_group twg\n" +
+                "\t\t\twhere twg.sender is not null \n" +
+                "\t\t\tand ws_type = 'CHAT'\n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') >= '2022-12-05' \n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') <= '2022-12-11' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_people_speak_num on tg.id = t_people_speak_num.group_id\t\n" +
+                "\t--群发言坐席数\n" +
+                "\tleft join (\n" +
+                "\tselect count(distinct (select tu.id from iuser.t_user tu where tu.user_type = 'STAFF' and tu.id = twg.sender)) staff_people_speak_num, twg.group_id from transfer.t_ws_group twg\n" +
+                "\t\t\twhere twg.sender is not null \n" +
+                "\t\t\tand ws_type = 'CHAT'\n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') >= '2022-12-05' \n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') <= '2022-12-11' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_staff_people_speak_num on tg.id = t_staff_people_speak_num.group_id\t\n" +
+                "\t--群发言用户数\n" +
+                "\tleft join (\n" +
+                "\tselect count(distinct (select tu.id from iuser.t_user tu where tu.user_type = 'NORMAL' and tu.id = twg.sender)) org_people_speak_num, twg.group_id from transfer.t_ws_group twg\n" +
+                "\t\t\twhere twg.sender is not null \n" +
+                "\t\t\tand ws_type = 'CHAT'\n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') >= '2022-12-05' \n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') <= '2022-12-11' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_org_people_speak_num on tg.id = t_org_people_speak_num.group_id\t\t\n" +
+                "\t--群发言过的单位用户数(2022年1月1日至今)\n" +
+                "\tleft join (\n" +
+                "\tselect count(distinct (select tu.id from iuser.t_user tu where tu.user_type = 'NORMAL' and tu.id = twg.sender)) org_people_speak_num, twg.group_id from transfer.t_ws_group twg\n" +
+                "\t\t\twhere twg.sender is not null \n" +
+                "\t\t\tand ws_type = 'CHAT'\n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') >= '2022-01-01' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_org_people_speak_num2 on tg.id = t_org_people_speak_num2.group_id\n" +
+                "\t--群发言过的单位数(2022年1月1日至今)\n" +
+                "\tleft join (\n" +
+                "\tselect count(distinct (select tuom.org_id from iuser.t_user_org_membership tuom, iuser.t_user tu where tuom.user_id = tu.id \n" +
+                "\t\tand tuom.tenant_id = tu.tenant_id\n" +
+                "\t\tand tu.user_type = 'NORMAL'\n" +
+                "\t\tand tu.tenant_id = '00000000-0000-0000-0000-000000000000'\n" +
+                "\t\tand twg.sender = tuom.user_id  order by tuom.create_time desc limit 1)) people_speak_org_num\n" +
+                "\t, twg.group_id from transfer.t_ws_group twg \n" +
+                "\t\t\twhere twg.sender is not null \n" +
+                "\t\t\tand ws_type = 'CHAT'\n" +
+                "\t\t\tand to_char(send_time, 'yyyy-MM-dd') >= '2022-01-01' \n" +
+                "\t\t\tand not exists(select 1 from transfer.t_ws_recall twr where twr.recall_ws_id = twg.ws_id)\n" +
+                "\t\t\tGROUP BY twg.group_id \n" +
+                "\t) t_people_speak_org_num2 on tg.id = t_people_speak_org_num2.group_id\n" +
+                "\n" +
+                "\twhere  tg.del_flag = 0 and tg.enabled = 1\t\n" +
+                "\torder by t_group_area.group_area,t_group_area.group_id\n";
+        this.str = text.replace(/2022-12-05/g, beginDate).replace(/2022-12-11/g, endDate);
+        this.$copyText( this.str ).then(() => {
+          this.$notify({
+            title: '复制成功',
+            type: 'success'
+          });
+        });
+      }
+    }
+  })
+</script>
+<style>
+  .scrollbarY::-webkit-scrollbar-thumb {
+    background-color: #2ab1ff;
+    background-image: -webkit-linear-gradient(45deg,
+    rgba(255, 255, 255, 0.4) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0.4) 75%,
+    transparent 75%,
+    transparent);
+    border-radius: 3em;
+  }
+
+  .scrollbarY::-webkit-scrollbar-track {
+    background-color: #ffffff;
+    border-radius: 3em;
+  }
+
+  .scrollbarY::-webkit-scrollbar {
+    width: 8px;
+    height: 15px;
+  }
+</style>
+</html>
